@@ -66,9 +66,24 @@ jobs:
           test -f externals/glad/src/glad.c
           echo "源码树完整"
 
+      - name: Patch libressl syslog for libnx
+        run: |
+          # libressl 的 compat/syslog.h 第一句是:
+          #   #ifndef _WIN32
+          #   #include_next <syslog.h>
+          #   #endif
+          # libnx 既不是 _WIN32 也没有 <syslog.h>，include_next 会直接失败。
+          # 改成只有确实存在 <syslog.h> 时才 include_next。
+          f=externals/libressl/include/compat/syslog.h
+          test -f "$f" || { echo "找不到 $f"; exit 1; }
+          sed -i '1,8s|^#ifndef _WIN32$|#if !defined(_WIN32) \&\& defined(HAVE_SYSLOG_H)|' "$f"
+          head -8 "$f"
+
       - name: Build
         run: |
-          make -j"$(nproc)" platform=libnx
+          # libnx 没有 syslog_r，用 libressl 自带的兼容实现
+          make -j"$(nproc)" platform=libnx \
+            DEFINES='-DHAVE_SYSLOG_R'
           ls -la citra_libretro_libnx.a
 
       - name: Upload static lib
