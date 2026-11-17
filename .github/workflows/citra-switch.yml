@@ -1,0 +1,131 @@
+name: Build Nintendo Switch core
+
+# 给 libretro/citra 补上 Nintendo Switch (libNX) 构建
+#
+# 产物: citra_libretro_libnx.nro —— 直接丢进 SD 卡 /retroarch/cores/
+#
+# Switch 上一个 NRO 只能静态链接一个核心，所以流程是两步：
+#   1) 编出静态库 citra_libretro_libnx.a
+#   2) 把 .a 塞进 RetroArch 前端，make -f Makefile.libnx LIBRETRO=citra
+#      产出一个自带 citra 的 retroarch_switch.nro
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ master ]
+    paths:
+      - 'src/**'
+      - 'externals/**'
+      - 'Makefile'
+      - 'Makefile.common'
+      - '.github/workflows/**'
+
+concurrency:
+  group: switch-core-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  core:
+    name: citra_libretro_libnx.a
+    runs-on: ubuntu-latest
+    container:
+      image: reallibretroretroarch/libretro-build-libnx-devkitpro:v4-10-0
+      options: -u root
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Show toolchain
+        run: |
+          echo "DEVKITPRO=$DEVKITPRO"
+          echo "DEVKITARM=$DEVKITARM"
+          $DEVKITARM/bin/aarch64-none-elf-g++ --version | head -1
+          ls $DEVKITPRO/libnx/switch_rules
+
+      - name: Sanity check tree
+        run: |
+          test -f Makefile
+          test -f externals/libretro-common/include/libretro.h
+          test -f externals/switch-compat/src/switch-compat.c
+          test -f externals/glad/src/glad.c
+          echo "源码树完整"
+
+      - name: Build
+        run: |
+          make -j"$(nproc)" platform=libnx
+          ls -la citra_libretro_libnx.a
+
+      - name: Upload static lib
+        uses: actions/upload-artifact@v4
+        with:
+          name: citra-libnx-static
+          path: citra_libretro_libnx.a
+          retention-days: 7
+          if-no-files-found: error
+
+  nro:
+    name: citra_libretro_libnx.nro
+    needs: core
+    runs-on: ubuntu-latest
+    container:
+      image: reallibretroretroarch/libretro-build-libnx-devkitpro:v4-10-0
+      options: -u root
+    steps:
+      - name: Checkout (for .info)
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            dist
+          sparse-checkout-cone-mode: true
+
+      - name: Fetch RetroArch
+        run: |
+          git clone --depth 1 https://github.com/libretro/RetroArch.git retroarch
+          cd retroarch
+          # 前端编译不需要完整子模块，但 libretro-common 是必须的
+          git submodule update --init --depth 1 deps/libretro-common || true
+          test -f Makefile.libnx
+
+      - name: Get core static lib
+        uses: actions/download-artifact@v4
+        with:
+          name: citra-libnx-static
+          path: retroarch
+
+      - name: Link and produce NRO
+        run: |
+          cd retroarch
+          # Makefile.libnx 固定链接 libretro_libnx.a 这个文件名，
+          # LIBRETRO= 变量并不会改变链接目标，所以必须重命名。
+          mv citra_libretro_libnx.a libretro_libnx.a
+          make -f Makefile.libnx -j"$(nproc)"
+          test -f retroarch_switch.nro
+          mv retroarch_switch.nro citra_libretro_libnx.nro
+          $DEVKITARM/bin/aarch64-none-elf-strip --strip-debug retroarch_switch.elf || true
+
+      - name: Verify NRO header
+        run: |
+          python3 - <<'PY'
+          import struct, os
+          p = "retroarch/citra_libretro_libnx.nro"
+          size = os.path.getsize(p)
+          with open(p, "rb") as f:
+              h = f.read(0x20)
+              nro_end = struct.unpack("<I", h[0x18:0x1C])[0]
+              f.seek(nro_end)
+              tag = f.read(4)
+          assert h[0x10:0x14] == b"NRO0", "magic 不是 NRO0"
+          assert tag == b"ASET", "缺少 ASET 资源段"
+          print(f"NRO 校验通过，{size/1024/1024:.1f} MB")
+          PY
+
+      - name: Upload NRO
+        uses: actions/upload-artifact@v4
+        with:
+          name: citra-libretro-switch
+          path: retroarch/citra_libretro_libnx.nro
+          retention-days: 30
+          if-no-files-found: error
