@@ -39,7 +39,29 @@ def patch_time(p):
     print("  patched:", p)
 
 
+def patch_bio(p):
+    """bss_bio.c / bss_conn.c 用了 SSIZE_MAX、htons 等 POSIX/BSD 定义，
+    libnx 的 newlib 里没有。在文件头补上最小定义。"""
+    s = open(p).read()
+    if "LIBNX_POSIX_SHIM" in s:
+        print("  bio: 已打过补丁")
+        return
+    shim = (
+        "/* LIBNX_POSIX_SHIM: newlib/libnx 缺这些定义 */\n"
+        "#include <limits.h>\n"
+        "#include <sys/types.h>\n"
+        "#ifdef __SWITCH__\n"
+        "#include <arpa/inet.h>\n"
+        "#ifndef SSIZE_MAX\n#define SSIZE_MAX ((ssize_t)(SIZE_MAX >> 1))\n#endif\n"
+        "#endif\n"
+    )
+    open(p, "w").write(shim + s)
+    print("  patched:", p)
+
+
 if __name__ == "__main__":
     patch_syslog(sys.argv[1])
     if len(sys.argv) > 2:
         patch_time(sys.argv[2])
+    for extra in sys.argv[3:]:
+        patch_bio(extra)
