@@ -74,6 +74,12 @@ jobs:
           python3 .github/scripts/patch-libressl-libnx.py \
             externals/libressl/include/compat/syslog.h \
             externals/libressl/include/compat/time.h
+          # LCRYPTO_ALIAS 等符号由 crypto/hidden/crypto_namespace.h 定义，
+          # 正常构建里由构建系统 -include 注入，citra 的 Makefile 没有这一步。
+          # 给 libressl 的每个 .c 补一行强制包含。
+          python3 .github/scripts/inject-namespace-header.py \
+            externals/libressl/crypto/hidden/crypto_namespace.h \
+            externals/libressl/crypto
           # syslog_r.c 用了 va_list 却没 include <stdarg.h>
           syslog_c=externals/libressl/crypto/compat/syslog_r.c
           grep -q 'stdarg.h' "$syslog_c" || sed -i '1i #include <stdarg.h>' "$syslog_c"
