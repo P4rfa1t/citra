@@ -41,8 +41,10 @@ jobs:
       - name: Show toolchain
         run: |
           echo "DEVKITPRO=$DEVKITPRO"
+          # devkitA64 才是 aarch64 工具链，DEVKITARM 是 32 位 ARM 的
           echo "DEVKITARM=$DEVKITARM"
-          $DEVKITARM/bin/aarch64-none-elf-g++ --version | head -1
+          echo "DEVKITPRO=$DEVKITPRO"
+          $DEVKITPRO/devkitA64/bin/aarch64-none-elf-g++ --version | head -1
           ls $DEVKITPRO/libnx/switch_rules
 
       - name: Prepare build environment
