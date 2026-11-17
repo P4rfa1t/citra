@@ -67,6 +67,37 @@ def patch_syslog_consts(p):
     return True
 
 
+def patch_endian_macros(p):
+    """libnx 的 newlib 没有 <endian.h>，所以 htobe32/be64toh 等宏全缺。
+    用 GCC 内建 __builtin_bswap* 补齐（常量折叠，零开销）。"""
+    s = open(p, encoding="utf-8", errors="surrogateescape").read()
+    if "LIBNX_ENDIAN_MACROS" in s:
+        return False
+    block = (
+        "\n/* LIBNX_ENDIAN_MACROS: libnx 无 <endian.h>，用 GCC bswap 内建补齐 */\n"
+        "#if defined(__SWITCH__)\n"
+        "#include <stdint.h>\n"
+        "#define bswap16(x) __builtin_bswap16((uint16_t)(x))\n"
+        "#define bswap32(x) __builtin_bswap32((uint32_t)(x))\n"
+        "#define bswap64(x) __builtin_bswap64((uint64_t)(x))\n"
+        "#ifndef htobe16\n#define htobe16(x) bswap16(x)\n#endif\n"
+        "#ifndef htobe32\n#define htobe32(x) bswap32(x)\n#endif\n"
+        "#ifndef htobe64\n#define htobe64(x) bswap64(x)\n#endif\n"
+        "#ifndef be16toh\n#define be16toh(x) bswap16(x)\n#endif\n"
+        "#ifndef be32toh\n#define be32toh(x) bswap32(x)\n#endif\n"
+        "#ifndef be64toh\n#define be64toh(x) bswap64(x)\n#endif\n"
+        "#ifndef htole16\n#define htole16(x) ((uint16_t)(x))\n#endif\n"
+        "#ifndef htole32\n#define htole32(x) ((uint32_t)(x))\n#endif\n"
+        "#ifndef htole64\n#define htole64(x) ((uint64_t)(x))\n#endif\n"
+        "#ifndef le16toh\n#define le16toh(x) ((uint16_t)(x))\n#endif\n"
+        "#ifndef le32toh\n#define le32toh(x) ((uint32_t)(x))\n#endif\n"
+        "#ifndef le64toh\n#define le64toh(x) ((uint64_t)(x))\n#endif\n"
+        "#endif\n"
+    )
+    open(p, "w", encoding="utf-8", errors="surrogateescape").write(s + block)
+    return True
+
+
 def patch_posix_shim(p):
     s = open(p, encoding="utf-8", errors="surrogateescape").read()
     if "LIBNX_POSIX_SHIM" in s:
@@ -93,7 +124,8 @@ if __name__ == "__main__":
             print("  include_next dropped:", f)
             n += 1
 
-    for f, fn in (("time.h", patch_time_clockid), ("syslog.h", patch_syslog_consts)):
+    for f, fn in (("time.h", patch_time_clockid), ("syslog.h", patch_syslog_consts),
+                  ("endian.h", patch_endian_macros)):
         p = os.path.join(compat_dir, f)
         if os.path.exists(p) and fn(p):
             print("  extra patched:", f)
