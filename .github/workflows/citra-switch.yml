@@ -86,9 +86,7 @@ jobs:
 
       - name: Build
         run: |
-          # libnx 没有 syslog_r，用 libressl 自带的兼容实现
-          make -j"$(nproc)" platform=libnx \
-            DEFINES='-DHAVE_SYSLOG_R'
+          make -j"$(nproc)" platform=libnx
           ls -la citra_libretro_libnx.a
 
       - name: Upload static lib
