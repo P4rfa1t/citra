@@ -66,26 +66,40 @@ jobs:
           test -f externals/glad/src/glad.c
           echo "源码树完整"
 
-      - name: Patch libressl syslog for libnx
+      - name: Patch libressl compat headers for libnx
         run: |
-          # libressl 的 compat/syslog.h 第一句是:
-          #   #ifndef _WIN32
-          #   #include_next <syslog.h>
-          #   #endif
-          # libnx 既不是 _WIN32 也没有 <syslog.h>，include_next 会直接失败。
-          # 改成只有确实存在 <syslog.h> 时才 include_next。
-          f=externals/libressl/include/compat/syslog.h
-          test -f "$f" || { echo "找不到 $f"; exit 1; }
-          sed -i '1,8s|^#ifndef _WIN32$|#if !defined(_WIN32) \&\& defined(HAVE_SYSLOG_H)|' "$f"
-          # 另外 syslog_r.c 直接用了 va_list 却没 include <stdarg.h>，
-          # 在 glibc 上靠间接包含能过，libnx 上不行，补进去。
-          g=externals/libressl/crypto/compat/syslog_r.c
-          grep -q 'stdarg.h' "$g" || sed -i '1i #include <stdarg.h>' "$g"
-          head -12 "$f"
-          head -3 "$g"
+          # libressl 的 compat 层假设「非 Windows 平台一定有 syslog.h / clock_gettime」，
+          # 但 libnx 两个都没有。最省事的做法是让它走 Windows 那条自带实现的分支。
+          #
+          # 1) compat/syslog.h：把 _WIN32 判断扩展成「libnx 也算」，
+          #    这样会启用它自带的 LOG_* 常量、struct syslog_data、syslog_r/vsyslog_r。
+          syslog_h=externals/libressl/include/compat/syslog.h
+          test -f "$syslog_h" || { echo "找不到 $syslog_h"; exit 1; }
+          sed -i 's/^#ifndef _WIN32$/#if !defined(_WIN32) \&\& defined(HAVE_SYSLOG_H)/' "$syslog_h"
+          sed -i 's/^#ifdef _WIN32$/#if !defined(HAVE_SYSLOG_H)/' "$syslog_h"
+
+          # 2) syslog_r.c 用了 va_list 却没 include <stdarg.h>
+          syslog_c=externals/libressl/crypto/compat/syslog_r.c
+          grep -q 'stdarg.h' "$syslog_c" || sed -i '1i #include <stdarg.h>' "$syslog_c"
+
+          # 3) compat/time.h：libnx 有 clock_gettime，但 clockid_t 与 libressl
+          #    的 typedef int 冲突，声明 HAVE_CLOCK_GETTIME 让它跳过重复定义。
+          echo "--- syslog.h 前 22 行"
+          head -22 "$syslog_h"
+          echo "--- syslog_r.c 前 3 行"
+          head -3 "$syslog_c"
 
       - name: Build
         run: |
+          # libressl 的 LIBRESSLFLAGS 里没有 HAVE_* 定义，
+          # 通过 LIBS 之外的途径注入不方便，直接在源码里补 config 头更稳。
+          echo '/* libnx build config for bundled libressl */' > externals/libressl/include/compat/libnx-config.h
+          printf '#ifndef LIBNX_LIBRESSL_CONFIG_H\n#define LIBNX_LIBRESSL_CONFIG_H\n#define HAVE_CLOCK_GETTIME 1\n#define HAVE_TIMEGM 1\n#define HAVE_TIMESPECSUB 1\n#endif\n' >> externals/libressl/include/compat/libnx-config.h
+          # 让 compat 头自动包含它
+          for h in time.h syslog.h; do
+            f=externals/libressl/include/compat/$h
+            grep -q 'libnx-config.h' "$f" || sed -i '1i #include "libnx-config.h"' "$f"
+          done
           make -j"$(nproc)" platform=libnx
           ls -la citra_libretro_libnx.a
 
