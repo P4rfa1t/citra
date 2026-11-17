@@ -77,7 +77,12 @@ jobs:
           f=externals/libressl/include/compat/syslog.h
           test -f "$f" || { echo "找不到 $f"; exit 1; }
           sed -i '1,8s|^#ifndef _WIN32$|#if !defined(_WIN32) \&\& defined(HAVE_SYSLOG_H)|' "$f"
-          head -8 "$f"
+          # 另外 syslog_r.c 直接用了 va_list 却没 include <stdarg.h>，
+          # 在 glibc 上靠间接包含能过，libnx 上不行，补进去。
+          g=externals/libressl/crypto/compat/syslog_r.c
+          grep -q 'stdarg.h' "$g" || sed -i '1i #include <stdarg.h>' "$g"
+          head -12 "$f"
+          head -3 "$g"
 
       - name: Build
         run: |
