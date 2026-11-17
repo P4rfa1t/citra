@@ -18,7 +18,7 @@ on:
       - 'externals/**'
       - 'Makefile'
       - 'Makefile.common'
-      - '.github/workflows/**'
+      - '.github/**'
 
 concurrency:
   group: switch-core-${{ github.ref }}
@@ -71,7 +71,9 @@ jobs:
           # libressl 的 compat 层假设「非 Windows 平台一定有 <syslog.h>」，
           # libnx 既没这个头，也没 LOG_* 常量。补丁脚本见同目录的
           # patch-libressl-libnx.py。
-          python3 .github/scripts/patch-libressl-libnx.py externals/libressl/include/compat/syslog.h
+          python3 .github/scripts/patch-libressl-libnx.py \
+            externals/libressl/include/compat/syslog.h \
+            externals/libressl/include/compat/time.h
           # syslog_r.c 用了 va_list 却没 include <stdarg.h>
           syslog_c=externals/libressl/crypto/compat/syslog_r.c
           grep -q 'stdarg.h' "$syslog_c" || sed -i '1i #include <stdarg.h>' "$syslog_c"
