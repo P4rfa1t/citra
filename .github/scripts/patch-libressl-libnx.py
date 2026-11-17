@@ -98,6 +98,27 @@ def patch_endian_macros(p):
     return True
 
 
+def patch_iovec(p):
+    """libnx 的 <sys/uio.h> 没有定义 struct iovec，x509/by_mem.c 要用。
+    补一个最小的 BSD 兼容定义。"""
+    s = open(p, encoding="utf-8", errors="surrogateescape").read()
+    if "LIBNX_IOVEC_SHIM" in s:
+        return False
+    shim = (
+        "/* LIBNX_IOVEC_SHIM: libnx 的 sys/uio.h 缺 struct iovec */\n"
+        "#if defined(__SWITCH__)\n"
+        "#include <stddef.h>\n"
+        "#include <sys/types.h>\n"
+        "#ifndef LIBNX_IOVEC_DEFINED\n"
+        "#define LIBNX_IOVEC_DEFINED 1\n"
+        "struct iovec { void *iov_base; size_t iov_len; };\n"
+        "#endif\n"
+        "#endif\n"
+    )
+    open(p, "w", encoding="utf-8", errors="surrogateescape").write(shim + s)
+    return True
+
+
 def patch_posix_shim(p):
     s = open(p, encoding="utf-8", errors="surrogateescape").read()
     if "LIBNX_POSIX_SHIM" in s:
@@ -109,6 +130,10 @@ def patch_posix_shim(p):
         "#ifdef __SWITCH__\n"
         "#include <arpa/inet.h>\n"
         "#ifndef SSIZE_MAX\n#define SSIZE_MAX ((ssize_t)(SIZE_MAX >> 1))\n#endif\n"
+        "#ifndef LIBNX_IOVEC_DEFINED\n"
+        "#define LIBNX_IOVEC_DEFINED 1\n"
+        "struct iovec { void *iov_base; size_t iov_len; };\n"
+        "#endif\n"
         "#endif\n"
     )
     open(p, "w", encoding="utf-8", errors="surrogateescape").write(shim + s)
@@ -131,7 +156,8 @@ if __name__ == "__main__":
             print("  extra patched:", f)
             n += 1
 
-    for rel in ("crypto/bio/bss_bio.c", "crypto/bio/bss_conn.c", "crypto/bio/bss_dgram.c"):
+    for rel in ("crypto/bio/bss_bio.c", "crypto/bio/bss_conn.c", "crypto/bio/bss_dgram.c",
+                "crypto/x509/by_mem.c"):
         p = os.path.join(libressl_root, rel)
         if os.path.exists(p) and patch_posix_shim(p):
             print("  posix shim:", rel)
