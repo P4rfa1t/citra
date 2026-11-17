@@ -45,6 +45,19 @@ jobs:
           $DEVKITARM/bin/aarch64-none-elf-g++ --version | head -1
           ls $DEVKITPRO/libnx/switch_rules
 
+      - name: Prepare build environment
+        run: |
+          # 容器内 checkout 出来的文件属主与当前用户不同，git 会拒绝访问
+          git config --global --add safe.directory "$(pwd)"
+          git config --global --add safe.directory '*'
+          # citra 的 Makefile 在 all: 目标前强制要求 glslang，
+          # 即使 libnx 平台不需要编 Vulkan 着色器也会检查，得装上
+          if ! which glslang >/dev/null 2>&1 && ! which glslangValidator >/dev/null 2>&1; then
+            apt-get update
+            apt-get install -y --no-install-recommends glslang-tools
+          fi
+          glslang --version || glslangValidator --version
+
       - name: Sanity check tree
         run: |
           test -f Makefile
@@ -83,6 +96,7 @@ jobs:
 
       - name: Fetch RetroArch
         run: |
+          git config --global --add safe.directory '*'
           git clone --depth 1 https://github.com/libretro/RetroArch.git retroarch
           cd retroarch
           # 前端编译不需要完整子模块，但 libretro-common 是必须的
