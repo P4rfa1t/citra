@@ -11,10 +11,10 @@ import sys
 
 header = sys.argv[1]
 roots = sys.argv[2:]
-# 以 libressl 根目录为基准算相对路径
-libressl_root = os.path.commonpath([os.path.abspath(r) for r in roots])
+# 编译器是从仓库根目录调用的，用相对仓库根的路径最稳
+repo_root = os.path.abspath(os.getcwd())
 line = '#include "%s"\n' % os.path.relpath(
-    os.path.abspath(header), libressl_root).replace(os.sep, "/")
+    os.path.abspath(header), repo_root).replace(os.sep, "/")
 
 n = 0
 skipped = 0
