@@ -76,9 +76,11 @@ jobs:
             externals/libressl
           # LCRYPTO_ALIAS 等宏定义在 crypto/hidden/crypto_namespace.h，
           # 正常构建由 -include 注入，citra 的 Makefile 没有这步。
+          # crypto 和 ssl 两棵树都要注入（ssl 用 LSSL_ALIAS）
           python3 .github/scripts/inject-namespace-header.py \
             externals/libressl/crypto/hidden/crypto_namespace.h \
-            externals/libressl/crypto
+            externals/libressl/crypto \
+            externals/libressl/ssl
 
       - name: Build
         run: |
