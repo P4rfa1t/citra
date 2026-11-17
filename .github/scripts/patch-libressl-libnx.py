@@ -156,11 +156,15 @@ if __name__ == "__main__":
             print("  extra patched:", f)
             n += 1
 
-    for rel in ("crypto/bio/bss_bio.c", "crypto/bio/bss_conn.c", "crypto/bio/bss_dgram.c",
-                "crypto/x509/by_mem.c"):
-        p = os.path.join(libressl_root, rel)
-        if os.path.exists(p) and patch_posix_shim(p):
-            print("  posix shim:", rel)
-            n += 1
+    # POSIX shim 给所有 libressl 的 .c 都加上，避免一个个补
+    crypto_dir = os.path.join(libressl_root, "crypto")
+    for dirpath, _dirs, files in os.walk(crypto_dir):
+        for f in files:
+            if not f.endswith(".c"):
+                continue
+            p = os.path.join(dirpath, f)
+            if patch_posix_shim(p):
+                n += 1
+    print("  posix shim applied across crypto tree")
 
     print("total patches:", n)
