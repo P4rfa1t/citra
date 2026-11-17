@@ -11,10 +11,9 @@ import sys
 
 header = sys.argv[1]
 roots = sys.argv[2:]
-# 编译器是从仓库根目录调用的，用相对仓库根的路径最稳
-repo_root = os.path.abspath(os.getcwd())
-line = '#include "%s"\n' % os.path.relpath(
-    os.path.abspath(header), repo_root).replace(os.sep, "/")
+# 引号包含会先按源文件所在目录解析，再按 -I 找。
+# crypto/compat/*.c 这类深层文件用相对路径会失败，直接写绝对路径最稳。
+line = '#include "%s"\n' % os.path.abspath(header).replace(os.sep, "/")
 
 n = 0
 skipped = 0
